@@ -14,3 +14,7 @@ clean :
 	rm -f probe.out
 	rm -f probe_output_*
 	clear
+
+git :
+	git commit -a -m "Updated version"
+	git push -u origin-ssh master
