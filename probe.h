@@ -35,6 +35,6 @@ void init_icmp (struct ip_list_s *ptr);
 void init_ntp (struct ip_list_s *ptr);
 void init_output();
 void print_IPs ();
-void probe_ntp (struct ip_list_s *ptr);
-void probe_ping (struct ip_list_s *ptr);
+void probe_ntp (struct ip_list_s *ptr, int round);
+void probe_ping (struct ip_list_s *ptr, int round);
 void purge_duplicates (struct ip_list_s *ptr);
