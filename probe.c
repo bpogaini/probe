@@ -38,14 +38,14 @@ FILE *OUTFILE;
 //char SRC_ADDR[15] = "128.198.49.196";
 char SRC_ADDR[15] = "172.16.249.241";
 char ICMP_DATA[19] = "bpogaini@uccs.edu";
-int MAX_ERRORS = 3;
-int DEBUG=1;
 
 struct config_s CONFIG =
 {
   .POLLING_DELAY = 1,	
   .SAMPLES_PER_TARGET = 1,
-  .TOTAL_ROUNDS = 1
+  .TOTAL_ROUNDS = 1,
+  .DEBUG = 1,
+  .MAX_ERRORS = 3
 };
 
 void get_config(char *filename)
@@ -72,17 +72,27 @@ void get_config(char *filename)
       if (strncmp(line,"POLLING_DELAY",strlen("POLLING_DELAY"))==0)
       {
         CONFIG.POLLING_DELAY=atoi(cfline);
-        if (DEBUG) printf("Found POLLING_DELAY = %d\n",CONFIG.POLLING_DELAY); 
+        if (CONFIG.DEBUG) printf("Found POLLING_DELAY = %d\n",CONFIG.POLLING_DELAY); 
       }
       else if (strncmp(line,"SAMPLES_PER_TARGET",strlen("SAMPLES_PER_TARGET"))==0)
       {
         CONFIG.SAMPLES_PER_TARGET=atoi(cfline);
-        if (DEBUG) printf("Found SAMPLES_PER_TARGET = %d\n",CONFIG.SAMPLES_PER_TARGET);
+        if (CONFIG.DEBUG) printf("Found SAMPLES_PER_TARGET = %d\n",CONFIG.SAMPLES_PER_TARGET);
       }
       else if (strncmp(line,"TOTAL_ROUNDS",strlen("TOTAL_ROUNDS"))==0)
       {
         CONFIG.TOTAL_ROUNDS=atoi(cfline);
-        if (DEBUG) printf("Found TOTAL_ROUNDS = %d\n",CONFIG.TOTAL_ROUNDS); 
+        if (CONFIG.DEBUG) printf("Found TOTAL_ROUNDS = %d\n",CONFIG.TOTAL_ROUNDS); 
+      }
+      else if (strncmp(line,"DEBUG",strlen("DEBUG"))==0)
+      {
+        CONFIG.DEBUG=atoi(cfline);
+        if (CONFIG.DEBUG) printf("Found DEBUG = %d\n",CONFIG.DEBUG); 
+      }
+      else if (strncmp(line,"MAX_ERRORS",strlen("MAX_ERRORS"))==0)
+      {
+        CONFIG.MAX_ERRORS=atoi(cfline);
+        if (CONFIG.DEBUG) printf("Found MAX_ERRORS = %d\n",CONFIG.MAX_ERRORS); 
       }
       else // assume the line is a hostname or IP
       {
@@ -98,28 +108,43 @@ void get_config(char *filename)
           strncpy(error_host, line, strlen(line));
           error_host[strlen(line)]=0;
           discard_IP (error_host, error_msg);
+          if (CONFIG.DEBUG) printf("%s resolution error: %s\n",error_host,error_msg);
         }
-        else if (RESPONSIVE_IP == NULL)
+        else if (strncmp(inet_ntoa(((struct sockaddr_in *)result->ai_addr)->sin_addr),"0.0.0.0",7)==0)
         {
-          RESPONSIVE_IP = (struct ip_list_s*) malloc (sizeof(struct ip_list_s));
-          current_IP = RESPONSIVE_IP;
+          error_msg = (char *) malloc (strlen ("Resolves to 0.0.0.0."));
+          strncpy(error_msg, "Resolves to 0.0.0.0.", strlen("Resolves to 0.0.0.0."));
+          error_host = (char *) malloc (strlen (line));
+          strncpy(error_host, line, strlen(line));
+          error_host[strlen(line)]=0;
+          discard_IP (error_host, error_msg);
+          if (CONFIG.DEBUG) printf("%s resolution error: %s\n",error_host,error_msg);
         }
         else
         {
-          current_IP->next = (struct ip_list_s*) malloc (sizeof(struct ip_list_s));
-          current_IP = current_IP->next;
+          if (RESPONSIVE_IP == NULL)
+          {
+            RESPONSIVE_IP = (struct ip_list_s*) malloc (sizeof(struct ip_list_s));
+            current_IP = RESPONSIVE_IP;
+          }
+          else
+          {
+            current_IP->next = (struct ip_list_s*) malloc (sizeof(struct ip_list_s));
+            current_IP = current_IP->next;
+          }
+          memset((char *)current_IP, 0, sizeof(struct ip_list_s));
+          current_IP->dest = (struct sockaddr_in*) malloc (sizeof(struct sockaddr_in));
+          memcpy(current_IP->dest, result->ai_addr, sizeof(struct sockaddr_in));
+          current_IP->dest->sin_family = AF_INET;
+          current_IP->dest->sin_port = htons(123);  // NTP port info unused for ICMP
+          current_IP->icmp_errors = 0;
+          current_IP->ntp_errors = 0;
+          if (CONFIG.DEBUG) printf("%s resolves to %s\n",line,inet_ntoa(current_IP->dest->sin_addr));
         }
-        memset((char *)current_IP, 0, sizeof(struct ip_list_s));
-        current_IP->dest = (struct sockaddr_in*) malloc (sizeof(struct sockaddr_in));
-        memcpy(current_IP->dest, result->ai_addr, sizeof(struct sockaddr_in));
-        current_IP->dest->sin_family = AF_INET;
-        current_IP->dest->sin_port = htons(123);  // NTP port info unused for ICMP
-        current_IP->icmp_errors = 0;
-        current_IP->ntp_errors = 0;
       }
 
     } // End while
-  if (DEBUG) print_IPs();
+  if (CONFIG.DEBUG) print_IPs();
   fclose(file);
   } // End if file
        
@@ -149,8 +174,10 @@ void discard_IP (char * host, char * reason)
   memset((char *)ptr, 0, sizeof(struct discard_list_s));
   ptr->host = malloc(strlen(host));
   strncpy(ptr->host, host, strlen(host));
+  *((char *) (ptr->host + strlen(host))) = 0;
   ptr->desc = malloc(strlen(reason));
   strncpy(ptr->desc, reason, strlen(reason));
+  *((char *) (ptr->desc + strlen(reason))) = 0;
   ptr->next = NULL;
 }
 
@@ -170,7 +197,7 @@ void purge_duplicates (struct ip_list_s *ptr)
 
       if (ptr->dest->sin_addr.s_addr == check_ptr->next->dest->sin_addr.s_addr)
       {  // found a duplicate.  cut it out
-        if (DEBUG) printf ("Duplicate.  Removing %s.\n",inet_ntoa(check_ptr->next->dest->sin_addr));
+        if (CONFIG.DEBUG) printf ("Duplicate.  Removing %s.\n",inet_ntoa(check_ptr->next->dest->sin_addr));
         check_ptr->next = check_ptr->next->next;
       }
       else
@@ -185,7 +212,7 @@ void purge_duplicates (struct ip_list_s *ptr)
     }
   }
 
-  if (DEBUG) print_IPs();
+  if (CONFIG.DEBUG) print_IPs();
 
   return;
 }
@@ -206,8 +233,8 @@ int main(int argc, char **argv)
 
   init_ntp (RESPONSIVE_IP);
 
-  if (DEBUG) printf("DATE,TIME,DEST_IP,PROTOCOL,ROUND,XMIT_SECONDS,XMIT_MICROS,RECV_SECONDS,RECV_MICROS,NTP_RECV_TIMESTAMP,NTP_XMIT_TIMESTAMP,NTP_PROCESSING_DELAY\n");
-  fprintf(OUTFILE,"DATE,TIME,DEST_IP,PROTOCOL,ROUND,XMIT_SECONDS,XMIT_MICROS,RECV_SECONDS,RECV_MICROS,NTP_RECV_TIMESTAMP,NTP_XMIT_TIMESTAMP,NTP_PROCESSING_DELAY\n");
+  if (CONFIG.DEBUG) printf("DATE,TIME,DEST_IP,PROTOCOL,RUN,ROUND,XMIT_SECONDS,XMIT_MICROS,RECV_SECONDS,RECV_MICROS,NTP_RECV_TIMESTAMP,NTP_XMIT_TIMESTAMP,NTP_PROCESSING_DELAY\n");
+  fprintf(OUTFILE,"DATE,TIME,DEST_IP,PROTOCOL,RUN,ROUND,XMIT_SECONDS,XMIT_MICROS,RECV_SECONDS,RECV_MICROS,NTP_RECV_TIMESTAMP,NTP_XMIT_TIMESTAMP,NTP_PROCESSING_DELAY\n");
 
   while (ctr1 != CONFIG.TOTAL_ROUNDS)
   {
@@ -216,16 +243,16 @@ int main(int argc, char **argv)
       break;  // No valid IPs to probe
     }
 
-    while ((RESPONSIVE_IP != NULL) && ((RESPONSIVE_IP->icmp_errors > MAX_ERRORS) || (RESPONSIVE_IP->ntp_errors > MAX_ERRORS)))
+    while ((RESPONSIVE_IP != NULL) && ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) || (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)))
     {
 
-      if (RESPONSIVE_IP->icmp_errors > MAX_ERRORS)
+      if (RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS)
       { // Too many ICMP errors
         discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP Errors.");
         RESPONSIVE_IP = RESPONSIVE_IP->next;
       }
 
-      if (RESPONSIVE_IP->ntp_errors > MAX_ERRORS)
+      if (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)
       {
         // Too many continuous NTP errors
         discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess NTP Errors.");
@@ -235,32 +262,61 @@ int main(int argc, char **argv)
 
     ptr = RESPONSIVE_IP;
 
-    while (ptr != NULL) 
+    while (ptr != NULL) // This round will ICMP PING each contact
     {
       for (ctr2=0;ctr2<CONFIG.SAMPLES_PER_TARGET;ctr2++)
       {
-        probe_ping (ptr, ctr2 + 1);
-        fflush(OUTFILE);
-      }
-
-      for (ctr2=0;ctr2<CONFIG.SAMPLES_PER_TARGET;ctr2++)
-      {
-        probe_ntp (ptr, ctr2 + 1);
+        probe_ping (ptr, ctr1 +1, ctr2 + 1);
         fflush(OUTFILE);
       }
 
       // Check the errors on the next IP and discard if needed
 
-      while ((ptr->next != NULL) && ((ptr->next->icmp_errors > MAX_ERRORS) || (ptr->next->ntp_errors > MAX_ERRORS)))
+      while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
       {
 
-        if (ptr->next->icmp_errors > MAX_ERRORS)
+        if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
         { // Too many ICMP errors
           discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
           ptr->next = ptr->next->next;
         }
   
-        if (ptr->next->ntp_errors > MAX_ERRORS)
+        if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
+        {
+          // Too many continuous NTP errors
+          discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
+          ptr->next = ptr->next->next;
+        }
+      }
+
+      ptr = ptr->next;
+    }
+   
+    sleep (CONFIG.POLLING_DELAY); // This delay pauses after ICMP pings before NTP pings
+ 
+    ptr = RESPONSIVE_IP;
+
+    while (ptr != NULL) // This round will NTP PING each contact
+    {
+
+      for (ctr2=0;ctr2<CONFIG.SAMPLES_PER_TARGET;ctr2++)
+      {
+        probe_ntp (ptr, ctr1 + 1,  ctr2 + 1);
+        fflush(OUTFILE);
+      }
+
+      // Check the errors on the next IP and discard if needed
+
+      while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
+      {
+
+        if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
+        { // Too many ICMP errors
+          discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
+          ptr->next = ptr->next->next;
+        }
+  
+        if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
         {
           // Too many continuous NTP errors
           discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
@@ -273,7 +329,7 @@ int main(int argc, char **argv)
 
     ctr1 ++;
 
-    sleep (CONFIG.POLLING_DELAY);
+    sleep (CONFIG.POLLING_DELAY); // This delay pauses after NTP pings before ICMP pings
   }
 
   close_output();
@@ -479,7 +535,7 @@ char * enum_icmp_unreachable (uint8_t code)
 
 /* Time the round trip time of an NTP request */
 
-void probe_ntp (struct ip_list_s *ptr, int round)
+void probe_ntp (struct ip_list_s *ptr, int run, int round)
 {
   struct iphdr* ip_reply;
   struct sockaddr_in connection;
@@ -612,10 +668,10 @@ void probe_ntp (struct ip_list_s *ptr, int round)
                 if (iperr)
                 {
                   strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-                  sprintf(log_rtt,"%s,NTP,%i,%u,%u,%s\n",inet_ntoa(ptr->dest->sin_addr),round,xmit.tv_sec,xmit.tv_usec,enum_icmp_unreachable(iperr->ee_code));
+                  sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,%s\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,enum_icmp_unreachable(iperr->ee_code));
                   sprintf(log,"%s%s",log_time,log_rtt);
                   fprintf(OUTFILE,"%s",log);
-                  if (DEBUG) printf("%s",log);
+                  if (CONFIG.DEBUG) printf("%s",log);
 
                 }
               }
@@ -634,17 +690,17 @@ void probe_ntp (struct ip_list_s *ptr, int round)
             memcpy(((void *)&xmit_timestamp) + 7 - cntr, ((void *)buffer) + 40 + cntr, 1);
           }
 
-//        if (DEBUG) printf("Receive Timestamp: %llu  Transmit Timestamp: %llu \n", recv_timestamp, xmit_timestamp);
-//        if (DEBUG) printf("Receive Timestamp: %llX  Transmit Timestamp: %llX \n", recv_timestamp, xmit_timestamp);
+//        if (CONFIG.DEBUG) printf("Receive Timestamp: %llu  Transmit Timestamp: %llu \n", recv_timestamp, xmit_timestamp);
+//        if (CONFIG.DEBUG) printf("Receive Timestamp: %llX  Transmit Timestamp: %llX \n", recv_timestamp, xmit_timestamp);
 
           timestamp_diff = xmit_timestamp - recv_timestamp;
           processing_time = (double)timestamp_diff * pow(2.0,-32.0);
 
           strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-          sprintf(log_rtt,"%s,NTP,%i,%u,%u,%u,%u,%llX,%llX,%.6f\n",inet_ntoa(connection.sin_addr),round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,recv_timestamp,xmit_timestamp,processing_time);
+          sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,%u,%u,%llX,%llX,%.6f\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,recv_timestamp,xmit_timestamp,processing_time);
           sprintf(log,"%s%s",log_time,log_rtt);
           fprintf(OUTFILE,"%s",log);
-          if (DEBUG) printf("%s",log);
+          if (CONFIG.DEBUG) printf("%s",log);
         }
         else // Something strange happened to get here
         {
@@ -664,10 +720,10 @@ void probe_ntp (struct ip_list_s *ptr, int round)
     {
       ptr->ntp_errors ++; // increment error count
       strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-      sprintf(log_rtt,"%s,NTP,%i,%u,%u,TIMEOUT\n",inet_ntoa(ptr->dest->sin_addr),round,xmit.tv_sec,xmit.tv_usec);
+      sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,TIMEOUT\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec);
       sprintf(log,"%s%s",log_time,log_rtt);
       fprintf(OUTFILE,"%s",log);
-      if (DEBUG) printf("%s",log);
+      if (CONFIG.DEBUG) printf("%s",log);
     }
   }
   close (sockfd);
@@ -676,7 +732,7 @@ void probe_ntp (struct ip_list_s *ptr, int round)
 
 /* Time the round trip time of an ICMP echo request */
 
-void probe_ping (struct ip_list_s *ptr, int round )
+void probe_ping (struct ip_list_s *ptr, int run, int round )
 {
   struct iphdr* ip_reply;
   struct sockaddr_in connection;
@@ -762,10 +818,10 @@ void probe_ping (struct ip_list_s *ptr, int round )
         {
           ptr->icmp_errors = 0;  // reset the error count
           strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-          sprintf(log_rtt,"%s,ICMP,%i,%u,%u,%u,%u\n",inet_ntoa(connection.sin_addr),round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec);
+          sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,%u,%u\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec);
           sprintf(log,"%s%s",log_time,log_rtt);
           fprintf(OUTFILE,"%s",log);
-          if (DEBUG) printf("%s",log);
+          if (CONFIG.DEBUG) printf("%s",log);
         }
         else // Check for an unreachable response
         {
@@ -773,29 +829,29 @@ void probe_ping (struct ip_list_s *ptr, int round )
           {  // decipher the unreachable code
             ptr->icmp_errors ++;  // increment the error count
             strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-            sprintf(log_rtt,"%s,ICMP,%i,%u,%u,%s\n",inet_ntoa(ptr->dest->sin_addr),round,xmit.tv_sec,xmit.tv_usec,enum_icmp_unreachable(icmp->code));
+            sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,%s\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,enum_icmp_unreachable(icmp->code));
             sprintf(log,"%s%s",log_time,log_rtt);
             fprintf(OUTFILE,"%s",log);
-            if (DEBUG) printf("%s",log);
+            if (CONFIG.DEBUG) printf("%s",log);
           }
           else if (icmp->type == ICMP_ECHO)
           { // Interference from an errant echo request
             strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-            sprintf(log_rtt,"%s,ICMP,%i,%u,%u,",inet_ntoa(ptr->dest->sin_addr),round,xmit.tv_sec,xmit.tv_usec);
+            sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec);
             sprintf(log_rtt2,"ICMP_Type_%u_from_%s\n",icmp->type,inet_ntoa(connection.sin_addr));
             sprintf(log,"%s%s%s",log_time,log_rtt,log_rtt2);
             fprintf(OUTFILE,"%s",log);
-            if (DEBUG) printf("%s",log);
+            if (CONFIG.DEBUG) printf("%s",log);
           }
           else
           { // Unprocessable ICMP type
             ptr->icmp_errors ++;  // increment the error count
             strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-            sprintf(log_rtt,"%s,ICMP,%i,%u,%u,ICMP_type_%u",inet_ntoa(ptr->dest->sin_addr),round,xmit.tv_sec,xmit.tv_usec,icmp->type);
+            sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,ICMP_type_%u",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,icmp->type);
             sprintf(log_rtt2,"_from_%s\n",inet_ntoa(connection.sin_addr));
             sprintf(log,"%s%s%s",log_time,log_rtt,log_rtt2);
             fprintf(OUTFILE,"%s",log);
-            if (DEBUG) printf("%s",log);
+            if (CONFIG.DEBUG) printf("%s",log);
           }
         }
       }
@@ -804,10 +860,10 @@ void probe_ping (struct ip_list_s *ptr, int round )
     {
       ptr->icmp_errors ++;  // increment the error count
       strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-      sprintf(log_rtt,"%s,ICMP,%i,%u,%u,TIMEOUT\n",inet_ntoa(ptr->dest->sin_addr),round,xmit.tv_sec,xmit.tv_usec);
+      sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,TIMEOUT\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec);
       sprintf(log,"%s%s",log_time,log_rtt);
       fprintf(OUTFILE,"%s",log);
-      if (DEBUG) printf("%s",log);
+      if (CONFIG.DEBUG) printf("%s",log);
     }
   }
   close (sockfd);
