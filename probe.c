@@ -874,7 +874,7 @@ void probe_ping (struct ip_list_s *ptr, int run, int round )
         if ((ptr->dest->sin_addr.s_addr == connection.sin_addr.s_addr) && (icmp->type == ICMP_ECHOREPLY))  // Ensure reply matches a request
         {
           ptr->icmp_errors = 0;  // reset the error count
-          received_ttl = (int)buffer[8];
+          received_ttl = (uint8_t)buffer[8];
           strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
           sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,%u,%u,%i,0,0,0,\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,received_ttl);
           sprintf(log,"%s%s",log_time,log_rtt);
