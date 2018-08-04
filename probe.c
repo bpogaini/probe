@@ -112,8 +112,8 @@ void get_config(char *filename)
         }
         else if (strncmp(inet_ntoa(((struct sockaddr_in *)result->ai_addr)->sin_addr),"0.0.0.0",7)==0)
         {
-          error_msg = (char *) malloc (strlen ("Resolves to 0.0.0.0."));
-          strncpy(error_msg, "Resolves to 0.0.0.0.", strlen("Resolves to 0.0.0.0."));
+          error_msg = (char *) malloc (strlen ("Resolves to 0.0.0.0.\0"));
+          strncpy(error_msg, "Resolves to 0.0.0.0.\0", strlen("Resolves to 0.0.0.0.\0"));
           error_host = (char *) malloc (strlen (line));
           strncpy(error_host, line, strlen(line));
           error_host[strlen(line)]=0;
@@ -238,27 +238,71 @@ int main(int argc, char **argv)
 
   while (ctr1 != CONFIG.TOTAL_ROUNDS)
   {
-    if (RESPONSIVE_IP == NULL)
-    {
-      break;  // No valid IPs to probe
-    }
+
+    /////////////////////////////////////////////////////////////////
+    // Purge all of the IPs that have tripped the MAX_ERROR threshold
+
+    // First is the special case for the head of the linked list
 
     while ((RESPONSIVE_IP != NULL) && ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) || (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)))
     {
-
-      if (RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS)
+      if (RESPONSIVE_IP == NULL)
+      { // Whoops all of the IPs have been discarded
+        break;
+      }
+      else if ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) && (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS))
+      { // Too many ICMP errors and NTP errors
+        discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP and NTP Errors.");
+        RESPONSIVE_IP = RESPONSIVE_IP->next;
+      }
+      else if (RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS)
       { // Too many ICMP errors
         discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP Errors.");
         RESPONSIVE_IP = RESPONSIVE_IP->next;
       }
-
-      if (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)
+      else if (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)
       {
         // Too many continuous NTP errors
         discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess NTP Errors.");
         RESPONSIVE_IP= RESPONSIVE_IP->next;
       }
     }
+
+    if (RESPONSIVE_IP == NULL)
+    {
+      break;  // No valid IPs
+    }
+
+    // At this point the head of the linked list is valid
+
+    ptr = RESPONSIVE_IP;
+
+    while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
+    {
+      if (ptr->next == NULL)
+      { // We've reached the end of the linked list
+        break;
+      }
+      else if ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) && (ptr->next->ntp_errors > CONFIG.MAX_ERRORS))
+      { // Too many ICMP errors and NTP errors
+        discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP and NTP Errors.");
+        ptr->next = ptr->next->next;
+      }
+      else if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
+      { // Too many ICMP errors
+        discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
+        ptr->next = ptr->next->next;
+      }
+      else if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
+      {
+        // Too many continuous NTP errors
+        discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
+        ptr->next = ptr->next->next;
+      }
+    }
+
+    /////////////////////////////////////////////////////////////
+    // ICMP probe each target SAMPLE times
 
     ptr = RESPONSIVE_IP;
 
@@ -270,30 +314,17 @@ int main(int argc, char **argv)
         fflush(OUTFILE);
       }
 
-      // Check the errors on the next IP and discard if needed
-
-      while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
-      {
-
-        if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
-        { // Too many ICMP errors
-          discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
-          ptr->next = ptr->next->next;
-        }
-  
-        if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
-        {
-          // Too many continuous NTP errors
-          discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
-          ptr->next = ptr->next->next;
-        }
-      }
-
       ptr = ptr->next;
     }
+
+    /////////////////////////////////////////////////////////////
+    // Delay after the ICMP and before NTP, to prevent the ICMP samples from interfing with NTP results
    
     sleep (CONFIG.POLLING_DELAY); // This delay pauses after ICMP pings before NTP pings
  
+    /////////////////////////////////////////////////////////////
+    // NTP probe each target SAMPLE times
+
     ptr = RESPONSIVE_IP;
 
     while (ptr != NULL) // This round will NTP PING each contact
@@ -305,31 +336,12 @@ int main(int argc, char **argv)
         fflush(OUTFILE);
       }
 
-      // Check the errors on the next IP and discard if needed
-
-      while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
-      {
-
-        if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
-        { // Too many ICMP errors
-          discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
-          ptr->next = ptr->next->next;
-        }
-  
-        if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
-        {
-          // Too many continuous NTP errors
-          discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
-          ptr->next = ptr->next->next;
-        }
-      }
-
       ptr = ptr->next;
     }
 
     ctr1 ++;
 
-    if (ctr1 != CONFIG.TOTAL_ROUNDS)  // No need pausing at the end of the last round
+    if (ctr1 != CONFIG.TOTAL_ROUNDS) // No need pausing at the end of the last round
     {
       sleep (CONFIG.POLLING_DELAY); // This delay pauses after NTP pings before ICMP pings
     }
@@ -969,6 +981,7 @@ void close_output()
   struct ip_list_s *ptr;
   struct discard_list_s *discard_ptr;
 
+  fprintf(OUTFILE,"Valid IPs\n");
   ptr = RESPONSIVE_IP;
   if (ptr != NULL) do
   {
@@ -979,10 +992,11 @@ void close_output()
   {
     fprintf(OUTFILE,"No valid IP addresses submitted.\n");
   }
+  fprintf(OUTFILE,"Discarded IPs\n");
   discard_ptr = DISCARDED_IP;
   if (discard_ptr != NULL) do
   {
-    fprintf(OUTFILE,"Discarded,%s,%s\n",discard_ptr->host,discard_ptr->desc);
+    fprintf(OUTFILE,"%s,%s\n",discard_ptr->host,discard_ptr->desc);
     discard_ptr = discard_ptr->next;
   } while (discard_ptr != NULL);
   else
@@ -1010,10 +1024,13 @@ void init_output()
 
   OUTFILE=fopen(filename,"w");
 
+  fprintf(OUTFILE,"Configuration Settings\n");
+
   fprintf(OUTFILE,"POLLING_DELAY,%d\n",CONFIG.POLLING_DELAY);
   fprintf(OUTFILE,"SAMPLES_PER_TARGET,%d\n",CONFIG.SAMPLES_PER_TARGET);
   fprintf(OUTFILE,"TOTAL_ROUNDS,%d\n",CONFIG.TOTAL_ROUNDS); 
   
+  fprintf(OUTFILE,"Valid IPs\n");
   ptr = RESPONSIVE_IP;
   if (ptr != NULL) do
   {
@@ -1024,15 +1041,16 @@ void init_output()
   {
     fprintf(OUTFILE,"No valid IP addresses submitted.\n");
   }
+  fprintf(OUTFILE,"Discarded IPs\n");
   discard_ptr = DISCARDED_IP;
   if (discard_ptr != NULL) do
   {
-    fprintf(OUTFILE,"Discarded,%s,%s\n",discard_ptr->host,discard_ptr->desc);
+    fprintf(OUTFILE,"%s,%s\n",discard_ptr->host,discard_ptr->desc);
     discard_ptr = discard_ptr->next;
   } while (discard_ptr != NULL);
   else
   {
-    fprintf(OUTFILE,"No discarded IPs.\n");
+    fprintf(OUTFILE,"No Discarded IPs\n");
   }
 }
 
@@ -1050,7 +1068,7 @@ void print_IPs ()
   } while (ptr != NULL);
   else
   {
-    printf("None.\n");
+    printf("None\n");
   }
 
   printf("Discarded IPs\n");
@@ -1062,7 +1080,7 @@ void print_IPs ()
   } while (discard_ptr != NULL);
   else
   {
-    printf("None.\n");
+    printf("None\n");
   }
   
 }
