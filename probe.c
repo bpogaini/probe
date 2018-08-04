@@ -114,6 +114,7 @@ void get_config(char *filename)
         {
           error_msg = (char *) malloc (strlen ("Resolves to 0.0.0.0.\0"));
           strncpy(error_msg, "Resolves to 0.0.0.0.\0", strlen("Resolves to 0.0.0.0.\0"));
+          error_msg[strlen("Resolves to 0.0.0.0.\0")]=0;
           error_host = (char *) malloc (strlen (line));
           strncpy(error_host, line, strlen(line));
           error_host[strlen(line)]=0;
