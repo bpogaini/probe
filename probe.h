@@ -6,7 +6,7 @@ struct config_s
   int SAMPLES_PER_TARGET;
   int TOTAL_ROUNDS;
   int DEBUG;
-  int MAX_ERRORS;
+//int MAX_ERRORS;
 };
 
 struct ip_list_s
@@ -17,8 +17,8 @@ struct ip_list_s
   char *ntp_packet_data;
   int ntp_packet_length;
   struct ip_list_s *next;
-  int icmp_errors;
-  int ntp_errors;
+//int icmp_errors;
+//int ntp_errors;
 };
 
 struct discard_list_s

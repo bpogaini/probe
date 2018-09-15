@@ -35,8 +35,6 @@
 struct ip_list_s *RESPONSIVE_IP = NULL; 
 struct discard_list_s *DISCARDED_IP = NULL;
 FILE *OUTFILE;
-//char SRC_ADDR[15] = "128.198.49.196";
-char SRC_ADDR[15] = "172.16.249.241";
 char ICMP_DATA[19] = "bpogaini@uccs.edu";
 
 struct config_s CONFIG =
@@ -44,8 +42,8 @@ struct config_s CONFIG =
   .POLLING_DELAY = 1,	
   .SAMPLES_PER_TARGET = 1,
   .TOTAL_ROUNDS = 1,
-  .DEBUG = 1,
-  .MAX_ERRORS = 3
+  .DEBUG = 1
+//.MAX_ERRORS = 3
 };
 
 void get_config(char *filename)
@@ -89,11 +87,11 @@ void get_config(char *filename)
         CONFIG.DEBUG=atoi(cfline);
         if (CONFIG.DEBUG) printf("Found DEBUG = %d\n",CONFIG.DEBUG); 
       }
-      else if (strncmp(line,"MAX_ERRORS",strlen("MAX_ERRORS"))==0)
-      {
-        CONFIG.MAX_ERRORS=atoi(cfline);
-        if (CONFIG.DEBUG) printf("Found MAX_ERRORS = %d\n",CONFIG.MAX_ERRORS); 
-      }
+//    else if (strncmp(line,"MAX_ERRORS",strlen("MAX_ERRORS"))==0)
+//    {
+//      CONFIG.MAX_ERRORS=atoi(cfline);
+//      if (CONFIG.DEBUG) printf("Found MAX_ERRORS = %d\n",CONFIG.MAX_ERRORS); 
+//    }
       else // assume the line is a hostname or IP
       {
         line[strlen(line)-1] = 0;
@@ -138,8 +136,8 @@ void get_config(char *filename)
           memcpy(current_IP->dest, result->ai_addr, sizeof(struct sockaddr_in));
           current_IP->dest->sin_family = AF_INET;
           current_IP->dest->sin_port = htons(123);  // NTP port info unused for ICMP
-          current_IP->icmp_errors = 0;
-          current_IP->ntp_errors = 0;
+//        current_IP->icmp_errors = 0;
+//        current_IP->ntp_errors = 0;
           if (CONFIG.DEBUG) printf("%s resolves to %s\n",line,inet_ntoa(current_IP->dest->sin_addr));
         }
       }
@@ -242,65 +240,70 @@ int main(int argc, char **argv)
 
     /////////////////////////////////////////////////////////////////
     // Purge all of the IPs that have tripped the MAX_ERROR threshold
+    //
+    // * Removed error purging on 25 August 2018.  
+    //   Probe is to collect data on the targeted IPs,
+    //   not to second-guess the researcher
+
 
     // First is the special case for the head of the linked list
 
-    while ((RESPONSIVE_IP != NULL) && ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) || (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)))
-    {
-      if (RESPONSIVE_IP == NULL)
-      { // Whoops all of the IPs have been discarded
-        break;
-      }
-      else if ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) && (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS))
-      { // Too many ICMP errors and NTP errors
-        discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP and NTP Errors.");
-        RESPONSIVE_IP = RESPONSIVE_IP->next;
-      }
-      else if (RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS)
-      { // Too many ICMP errors
-        discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP Errors.");
-        RESPONSIVE_IP = RESPONSIVE_IP->next;
-      }
-      else if (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)
-      {
-        // Too many continuous NTP errors
-        discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess NTP Errors.");
-        RESPONSIVE_IP= RESPONSIVE_IP->next;
-      }
-    }
-
-    if (RESPONSIVE_IP == NULL)
-    {
-      break;  // No valid IPs
-    }
-
-    // At this point the head of the linked list is valid
-
-    ptr = RESPONSIVE_IP;
-
-    while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
-    {
-      if (ptr->next == NULL)
-      { // We've reached the end of the linked list
-        break;
-      }
-      else if ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) && (ptr->next->ntp_errors > CONFIG.MAX_ERRORS))
-      { // Too many ICMP errors and NTP errors
-        discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP and NTP Errors.");
-        ptr->next = ptr->next->next;
-      }
-      else if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
-      { // Too many ICMP errors
-        discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
-        ptr->next = ptr->next->next;
-      }
-      else if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
-      {
-        // Too many continuous NTP errors
-        discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
-        ptr->next = ptr->next->next;
-      }
-    }
+//  while ((RESPONSIVE_IP != NULL) && ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) || (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)))
+//  {
+//    if (RESPONSIVE_IP == NULL)
+//    { // Whoops all of the IPs have been discarded
+//      break;
+//    }
+//    else if ((RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS) && (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS))
+//    { // Too many ICMP errors and NTP errors
+//      discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP and NTP Errors.");
+//      RESPONSIVE_IP = RESPONSIVE_IP->next;
+//    }
+//    else if (RESPONSIVE_IP->icmp_errors > CONFIG.MAX_ERRORS)
+//    { // Too many ICMP errors
+//      discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess ICMP Errors.");
+//      RESPONSIVE_IP = RESPONSIVE_IP->next;
+//    }
+//    else if (RESPONSIVE_IP->ntp_errors > CONFIG.MAX_ERRORS)
+//    {
+//      // Too many continuous NTP errors
+//      discard_IP (inet_ntoa(RESPONSIVE_IP->dest->sin_addr), "Excess NTP Errors.");
+//      RESPONSIVE_IP= RESPONSIVE_IP->next;
+//    }
+//  }
+//
+//  if (RESPONSIVE_IP == NULL)
+//  {
+//    break;  // No valid IPs
+//  }
+//
+//  // At this point the head of the linked list is valid
+//
+//  ptr = RESPONSIVE_IP;
+//
+//  while ((ptr->next != NULL) && ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) || (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)))
+//  {
+//    if (ptr->next == NULL)
+//    { // We've reached the end of the linked list
+//      break;
+//    }
+//    else if ((ptr->next->icmp_errors > CONFIG.MAX_ERRORS) && (ptr->next->ntp_errors > CONFIG.MAX_ERRORS))
+//    { // Too many ICMP errors and NTP errors
+//      discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP and NTP Errors.");
+//      ptr->next = ptr->next->next;
+//    }
+//    else if (ptr->next->icmp_errors > CONFIG.MAX_ERRORS)
+//    { // Too many ICMP errors
+//      discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess ICMP Errors.");
+//      ptr->next = ptr->next->next;
+//    }
+//    else if (ptr->next->ntp_errors > CONFIG.MAX_ERRORS)
+//    {
+//      // Too many continuous NTP errors
+//      discard_IP (inet_ntoa(ptr->next->dest->sin_addr), "Excess NTP Errors.");
+//      ptr->next = ptr->next->next;
+//    }
+//  }
 
     /////////////////////////////////////////////////////////////
     // ICMP probe each target SAMPLE times
@@ -581,6 +584,7 @@ void probe_ntp (struct ip_list_s *ptr, int run, int round)
   double processing_time;
   uint8_t * ttlptr;
   int received_ttl;
+  char kissCode[5];
   
 
   struct iovec iov[1] = { { buffer, sizeof(buffer) } };
@@ -678,7 +682,7 @@ void probe_ntp (struct ip_list_s *ptr, int run, int round)
 
       if (recvmsg(sockfd, &hdr, 0) == -1)
       { // Handle the error
-        ptr->ntp_errors ++;  // increment error count
+//      ptr->ntp_errors ++;  // increment error count
         erraddr = malloc (sizeof (struct sockaddr_in));
         errmsgh.msg_name = (void *) erraddr;
         errmsgh.msg_namelen = sizeof (struct sockaddr_in);
@@ -753,23 +757,37 @@ printf ("Received TTL = %i\n", received_ttl);
 
         if (ptr->dest->sin_addr.s_addr == connection.sin_addr.s_addr)  // Ensure reply matches a request
         {
-          ptr->ntp_errors = 0; // reset error count 
+//        ptr->ntp_errors = 0; // reset error count 
           for (cntr=0;cntr<8;cntr++) // do this manually, there's no ntohll
           {
             memcpy(((void *)&recv_timestamp) + 7 - cntr, ((void *)buffer) + 32 + cntr, 1);
             memcpy(((void *)&xmit_timestamp) + 7 - cntr, ((void *)buffer) + 40 + cntr, 1);
           }
 
-          if (CONFIG.DEBUG) printf("Receive Timestamp: %llX  Transmit Timestamp: %llX \n", recv_timestamp, xmit_timestamp);
-
           timestamp_diff = xmit_timestamp - recv_timestamp;
           processing_time = (double)timestamp_diff * pow(2.0,-32.0);
 
-          strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
-          sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,%u,%u,%i,%llX,%llX,%.6f,\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,received_ttl,recv_timestamp,xmit_timestamp,processing_time);
-          sprintf(log,"%s%s",log_time,log_rtt);
-          fprintf(OUTFILE,"%s",log);
-          if (CONFIG.DEBUG) printf("%s",log);
+          // Check if the Stratum is zero.  If so, retrieve the kiss code from the Reference Identifier
+
+          if ((char)(*(buffer + 1)) == 0)
+          {
+            // Get the kiss code
+            memcpy((void*)kissCode, ((void *)buffer) + 12, 4);
+            kissCode[4]=0;
+            strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
+            sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,%u,%u,%i,%llX,%llX,%.6f,KISS_CODE_%s\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,received_ttl,recv_timestamp,xmit_timestamp,processing_time,kissCode);
+            sprintf(log,"%s%s",log_time,log_rtt);
+            fprintf(OUTFILE,"%s",log);
+            if (CONFIG.DEBUG) printf("%s",log);
+          }
+          else
+          { 
+            strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
+            sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,%u,%u,%i,%llX,%llX,%.6f,\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,received_ttl,recv_timestamp,xmit_timestamp,processing_time);
+            sprintf(log,"%s%s",log_time,log_rtt);
+            fprintf(OUTFILE,"%s",log);
+            if (CONFIG.DEBUG) printf("%s",log);
+          }
         }
         else // Something strange happened to get here.  We got NTP from someone else.
         {
@@ -787,7 +805,7 @@ printf ("Received TTL = %i\n", received_ttl);
     }
     else // No response -- socket timed out
     {
-      ptr->ntp_errors ++; // increment error count
+//    ptr->ntp_errors ++; // increment error count
       strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
       sprintf(log_rtt,"%s,NTP,%i,%i,%u,%u,0,0,0,0,0,0,TIMEOUT\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec);
       sprintf(log,"%s%s",log_time,log_rtt);
@@ -886,7 +904,7 @@ void probe_ping (struct ip_list_s *ptr, int run, int round )
         icmp = (struct icmphdr*) (buffer + sizeof(struct iphdr));
         if ((ptr->dest->sin_addr.s_addr == connection.sin_addr.s_addr) && (icmp->type == ICMP_ECHOREPLY))  // Ensure reply matches a request
         {
-          ptr->icmp_errors = 0;  // reset the error count
+//        ptr->icmp_errors = 0;  // reset the error count
           received_ttl = (uint8_t)buffer[8];
           strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
           sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,%u,%u,%i,0,0,0,\n",inet_ntoa(connection.sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,recv.tv_sec,recv.tv_usec,received_ttl);
@@ -898,7 +916,7 @@ void probe_ping (struct ip_list_s *ptr, int run, int round )
         {
           if (icmp->type == ICMP_DEST_UNREACH)
           {  // decipher the unreachable code
-            ptr->icmp_errors ++;  // increment the error count
+//          ptr->icmp_errors ++;  // increment the error count
             strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
             sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,0,0,0,0,0,0,%s\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,enum_icmp_unreachable(icmp->code));
             sprintf(log,"%s%s",log_time,log_rtt);
@@ -916,7 +934,7 @@ void probe_ping (struct ip_list_s *ptr, int run, int round )
           }
           else
           { // Unprocessable ICMP type
-            ptr->icmp_errors ++;  // increment the error count
+//          ptr->icmp_errors ++;  // increment the error count
             strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
             sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,0,0,0,0,0,0,ICMP_type_%u",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec,icmp->type);
             sprintf(log_rtt2,"_from_%s\n",inet_ntoa(connection.sin_addr));
@@ -929,7 +947,7 @@ void probe_ping (struct ip_list_s *ptr, int run, int round )
     }
     else // socket timed out
     {
-      ptr->icmp_errors ++;  // increment the error count
+//    ptr->icmp_errors ++;  // increment the error count
       strftime(log_time,MAXBUF,"%Y-%m-%d,%H:%M:%S,",ptr_time);
       sprintf(log_rtt,"%s,ICMP,%i,%i,%u,%u,0,0,0,0,0,0,TIMEOUT\n",inet_ntoa(ptr->dest->sin_addr),run,round,xmit.tv_sec,xmit.tv_usec);
       sprintf(log,"%s%s",log_time,log_rtt);
@@ -1031,7 +1049,7 @@ void init_output()
   fprintf(OUTFILE,"SAMPLES_PER_TARGET,%d\n",CONFIG.SAMPLES_PER_TARGET);
   fprintf(OUTFILE,"TOTAL_ROUNDS,%d\n",CONFIG.TOTAL_ROUNDS); 
   
-  fprintf(OUTFILE,"Valid IPs\n");
+  fprintf(OUTFILE,"Valid Targets\n");
   ptr = RESPONSIVE_IP;
   if (ptr != NULL) do
   {
@@ -1040,9 +1058,9 @@ void init_output()
   } while (ptr != NULL);
   else
   {
-    fprintf(OUTFILE,"No valid IP addresses submitted.\n");
+    fprintf(OUTFILE,"No Valid Targets.\n");
   }
-  fprintf(OUTFILE,"Discarded IPs\n");
+  fprintf(OUTFILE,"Invalid Targets\n");
   discard_ptr = DISCARDED_IP;
   if (discard_ptr != NULL) do
   {
@@ -1051,7 +1069,7 @@ void init_output()
   } while (discard_ptr != NULL);
   else
   {
-    fprintf(OUTFILE,"No Discarded IPs\n");
+    fprintf(OUTFILE,"No Invalid Targets\n");
   }
 }
 
@@ -1060,7 +1078,7 @@ void print_IPs ()
   struct ip_list_s *ptr;
   struct discard_list_s *discard_ptr;
 
-  printf("Responsive IPs\n");
+  printf("Valid Targets\n");
   ptr = RESPONSIVE_IP;
   if (ptr != NULL) do
   {
@@ -1072,7 +1090,7 @@ void print_IPs ()
     printf("None\n");
   }
 
-  printf("Discarded IPs\n");
+  printf("Invalid Targets\n");
   discard_ptr = DISCARDED_IP;
   if (discard_ptr != NULL) do
   {
